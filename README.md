@@ -18,7 +18,7 @@ After first launch, u need to configure plugin in  addons/counterstrikesharp/con
 "BlockedCountry": [], // Kick countries on list
 "AllowedCountry": [], // Allow only countries on list, kick others
 "AllowedIps": [], // Whitelist of ips
-"PunishCommand": "css_ban #{userid} 18000 \"Cheats Detected #3\"", // Command to use when plugin detect vpn or country
+"PunishCommand": "css_ban #{userid} 18000 \"VPN Detected #3\"", // Command to use when plugin detect vpn or country
 "DatabaseHost": "", // MySQL database host
 "DatabasePort": 3306, // MySQL database port
 "DatabaseUser": "", // MySQL database username
