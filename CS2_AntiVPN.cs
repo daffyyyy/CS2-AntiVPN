@@ -13,10 +13,10 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 	public required AntiVpnConfig Config { get; set; }
 	private string? _connectionString;
 	private Database? _database;
-	private HashSet<int> BannedPlayers = [];
+	private readonly HashSet<int> _bannedPlayers = [];
 	    
 	public override string ModuleName => "CS2-AntiVPN";
-	public override string ModuleVersion => "1.0.1";
+	public override string ModuleVersion => "1.0.2";
 	public override string ModuleAuthor => "daffyy";
 	public override string ModuleDescription => "Kicks players using VPNs";
 
@@ -94,7 +94,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 
 		AddTimer(2.0f, () => Task.Run(async () =>
 		{
-			if (player == null || !player.IsValid || player.Connected != PlayerConnectedState.PlayerConnected || BannedPlayers.Contains(player.Slot))
+			if (player == null || !player.IsValid || player.Connected != PlayerConnectedState.PlayerConnected || _bannedPlayers.Contains(player.Slot))
 				return;
 			
 			await VpnAction(ipAddress, player);
@@ -111,7 +111,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 
 		if (player == null || !player.IsValid || player.IsBot) return HookResult.Continue;
 
-		BannedPlayers.Remove(player.Slot);
+		_bannedPlayers.Remove(player.Slot);
 		
 		return HookResult.Continue;
 	}
@@ -122,38 +122,49 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 	
 		if (localCheck.exists)
 		{
-			if (Config.DetectVpn && localCheck.isUsingVPN || Config.BlockedCountry.Contains(localCheck.countryCode)
+			if (Config.DetectVpn && localCheck.isUsingVPN || Config.BlockedCountry.Any(country =>
+				                                              country.Equals(localCheck.countryCode,
+					                                              StringComparison.OrdinalIgnoreCase))
+
 			                                              || Config.AllowedCountry.Count > 0 &&
-			                                              !Config.AllowedCountry.Contains(localCheck.countryCode))
+			                                              !Config.AllowedCountry.Any(country =>
+				                                              country.Equals(localCheck.countryCode,
+					                                              StringComparison.OrdinalIgnoreCase))
+			   )
 			{
 				await Server.NextFrameAsync(() =>
 				{
-					if (BannedPlayers.Contains(player.Slot))
+					if (_bannedPlayers.Contains(player.Slot))
 						return;
 					
 					var punishCommand = PunishCommand(player);
 					Server.ExecuteCommand(punishCommand);
 					
-					BannedPlayers.Add(player.Slot);
+					_bannedPlayers.Add(player.Slot);
 				});
 			}
 		}
 		else
 		{
 			var isUsingVpn = await CheckVpn(ipAddress);
-			if (Config.DetectVpn && isUsingVpn.status || Config.BlockedCountry.Contains(isUsingVpn.countryCode)
-			                                              || Config.AllowedCountry.Count > 0 &&
-			                                              !Config.AllowedCountry.Contains(isUsingVpn.countryCode))
+			if (Config.DetectVpn && isUsingVpn.status || Config.BlockedCountry.Any(country =>
+				                                          country.Equals(isUsingVpn.countryCode,
+					                                          StringComparison.OrdinalIgnoreCase))
+			                                          || Config.AllowedCountry.Count > 0 &&
+			                                          !Config.AllowedCountry.Any(country =>
+				                                          country.Equals(isUsingVpn.countryCode,
+					                                          StringComparison.OrdinalIgnoreCase))
+			   )
 			{
 				await Server.NextFrameAsync(() =>
 				{
-					if (BannedPlayers.Contains(player.Slot))
+					if (_bannedPlayers.Contains(player.Slot))
 						return;
 
 					var punishCommand = PunishCommand(player);
 					Server.ExecuteCommand(punishCommand);
 					
-					BannedPlayers.Add(player.Slot);
+					_bannedPlayers.Add(player.Slot);
 				});
 			}
 		
@@ -173,7 +184,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 	private async Task<(bool status, string countryCode)> CheckVpn(string ipAddress)
 	{
 		using var client = new HttpClient();
-		var url = string.IsNullOrEmpty(Config.ApiKey) ? $"https://proxycheck.io/v2/{ipAddress}?vpn=2" : $"http://v2.api.iphub.info/ip/{ipAddress}";
+		var url = string.IsNullOrEmpty(Config.ApiKey) ? $"https://proxycheck.io/v2/{ipAddress}?vpn=2&asn=1" : $"http://v2.api.iphub.info/ip/{ipAddress}";
 
 		try
 		{
@@ -187,9 +198,9 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 					dynamic? jsonResult = Newtonsoft.Json.JsonConvert.DeserializeObject(responseBody);
 					if (jsonResult == null) return (false, "Unknown");
 
-					if (jsonResult.status == "ok" && jsonResult[ipAddress].proxy == "yes")
+					if (jsonResult.status == "ok")
 					{
-						return (true, "Unknown");
+						return (jsonResult[ipAddress].proxy == "yes", jsonResult[ipAddress].isocode);
 					}
 				}
 			}
