@@ -16,7 +16,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 	private readonly HashSet<int> _bannedPlayers = [];
 	    
 	public override string ModuleName => "CS2-AntiVPN";
-	public override string ModuleVersion => "1.0.3";
+	public override string ModuleVersion => "1.0.4";
 	public override string ModuleAuthor => "daffyy";
 	public override string ModuleDescription => "Kicks players using VPNs";
 
@@ -84,9 +84,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 	public HookResult EventPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo _)
 	{
 		CCSPlayerController? player = @event.Userid;
-
 		if (player == null || !player.IsValid || player.IsBot || player.IpAddress == null) return HookResult.Continue;
-
 		var ipAddress = player.IpAddress.Split(":")[0];
 
 		if (Config.AllowedIps.Contains(ipAddress))
@@ -104,16 +102,16 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 	public HookResult EventPlayerDisconnect(EventPlayerDisconnect @event, GameEventInfo _)
 	{
 		CCSPlayerController? player = @event.Userid;
-
-		if (player == null || !player.IsValid || player.IsBot) return HookResult.Continue;
-
-		_bannedPlayers.Remove(player.Slot);
-		
+		if (player == null || !player.IsValid || player.IsBot || !player.UserId.HasValue) return HookResult.Continue;
+		_bannedPlayers.Remove(player.UserId.Value);
 		return HookResult.Continue;
 	}
 
 	private async Task VpnAction(string ipAddress, CCSPlayerController player)
 	{
+		if (!player.UserId.HasValue)
+			return;
+		
         var (exists, isUsingVpn, countryCode) = await IsIpInDatabase(ipAddress);
 	
 		if (exists)
@@ -130,13 +128,13 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 			{
 				await Server.NextFrameAsync(() =>
 				{
-					if (_bannedPlayers.Contains(player.Slot))
+					if (player == null || !player.IsValid || _bannedPlayers.Contains(player.UserId.Value))
 						return;
 					
 					var punishCommand = PunishCommand(player);
 					Server.ExecuteCommand(punishCommand);
 					
-					_bannedPlayers.Add(player.Slot);
+					_bannedPlayers.Add(player.UserId.Value);
 				});
 			}
 		}
@@ -155,13 +153,13 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 			{
 				await Server.NextFrameAsync(() =>
 				{
-					if (_bannedPlayers.Contains(player.Slot))
+					if (player == null || !player.IsValid || _bannedPlayers.Contains(player.UserId.Value))
 						return;
 
 					var punishCommand = PunishCommand(player);
 					Server.ExecuteCommand(punishCommand);
 					
-					_bannedPlayers.Add(player.Slot);
+					_bannedPlayers.Add(player.UserId.Value);
 				});
 			}
 		
@@ -209,7 +207,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 				if (response.IsSuccessStatusCode)
 				{
 					dynamic? jsonResult = Newtonsoft.Json.JsonConvert.DeserializeObject(responseBody);
-					return jsonResult == null ? (false, "Unknown") : ((bool status, string countryCode))(jsonResult.block == 1, jsonResult.countryCode);
+					return jsonResult == null ? (false, "Unknown") : ((bool status, string countryCode))(jsonResult.block == 1, jsonResult.isocode ?? "Unknown");
 				}
 			}
 		}
