@@ -109,8 +109,8 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 
 	private async Task VpnAction(string ipAddress, CCSPlayerController player)
 	{
-		if (!player.UserId.HasValue)
-			return;
+		// if (!player.UserId.HasValue)
+		// 	return;
 		
         var (exists, isUsingVpn, countryCode) = await IsIpInDatabase(ipAddress);
 	
@@ -207,7 +207,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 				if (response.IsSuccessStatusCode)
 				{
 					dynamic? jsonResult = Newtonsoft.Json.JsonConvert.DeserializeObject(responseBody);
-					return jsonResult == null ? (false, "Unknown") : ((bool status, string countryCode))(jsonResult.block == 1, jsonResult.isocode ?? "Unknown");
+					return jsonResult == null ? (false, "Unknown") : ((bool status, string countryCode))(jsonResult[ipAddress].proxy == "yes", jsonResult[ipAddress].isocode ?? "Unknown");
 				}
 			}
 		}
