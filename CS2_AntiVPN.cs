@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
@@ -16,7 +18,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 	private readonly HashSet<int> _bannedPlayers = [];
 	    
 	public override string ModuleName => "CS2-AntiVPN";
-	public override string ModuleVersion => "1.0.4";
+	public override string ModuleVersion => "1.0.5";
 	public override string ModuleAuthor => "daffyy";
 	public override string ModuleDescription => "Kicks players using VPNs";
 
@@ -27,13 +29,82 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 			foreach (var player in Utilities.GetPlayers().Where(p => p is { IsValid: true, IsBot: false, Connected: PlayerConnectedState.PlayerConnected }))
 			{
 				var ipAddress = player.IpAddress?.Split(":")[0];
-				if (string.IsNullOrEmpty(ipAddress) || Config.AllowedIps.Contains(ipAddress)) continue;
+				if (string.IsNullOrEmpty(ipAddress) || IsIpAllowed(ipAddress)) continue;
 				
 				Task.Run(() =>
 				{
 					_ =  VpnAction(ipAddress, player);
 				});
 			}
+		}
+	}
+
+	private bool IsIpAllowed(string ip)
+	{
+		foreach (var rule in Config.AllowedIps)
+		{
+			if (rule.Contains("/"))
+			{
+				if (IsInCidrRange(ip, rule)) return true;
+			}
+			else if (rule.Contains("*"))
+			{
+				if (IsWildCardMatch(ip, rule)) return true;
+			}
+			else
+			{
+				if (rule == ip) return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool IsWildCardMatch(string ip, string pattern)
+	{
+		var ipParts = ip.Split('.');
+		var patternParts = pattern.Split('.');
+
+		if (ipParts.Length != 4 || patternParts.Length != 4) return false;
+		for (int i = 0; i < 4; i++)
+		{
+			if (patternParts[i] == "*") continue;
+			if (ipParts[i] != patternParts[i]) return false;
+		}
+
+		return true;
+	}
+
+	private bool IsInCidrRange(string ip, string cidr)
+	{
+		try
+		{
+			var parts = cidr.Split('/');
+			var baseIp = IPAddress.Parse(parts[0]);
+			int prefixLength = int.Parse(parts[1]);
+
+			var ipBytes = IPAddress.Parse(ip).GetAddressBytes();
+			var baseIpBytes = baseIp.GetAddressBytes();
+
+			if (ipBytes.Length != baseIpBytes.Length) return false;
+
+			int bitsToCompare = prefixLength;
+			for (int i = 0; i < ipBytes.Length && bitsToCompare > 0; i++)
+			{
+				int bits = Math.Min(8, bitsToCompare);
+				int mask = 0xFF << (8 - bits);
+
+				if ((ipBytes[i] & mask) != (baseIpBytes[i] & mask))
+						return false;
+
+				bitsToCompare -= bits;
+			}
+
+			return true;
+		}
+		catch
+		{
+			return false;
 		}
 	}
 
@@ -87,7 +158,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 		if (player == null || !player.IsValid || player.IsBot || player.IpAddress == null) return HookResult.Continue;
 		var ipAddress = player.IpAddress.Split(":")[0];
 
-		if (Config.AllowedIps.Contains(ipAddress))
+		if (IsIpAllowed(ipAddress))
 			return HookResult.Continue;
 
 		Task.Run(async () =>
@@ -128,7 +199,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 			{
 				await Server.NextFrameAsync(() =>
 				{
-					if (player == null || !player.IsValid || _bannedPlayers.Contains(player.UserId.Value))
+					if (player == null || !player.IsValid || player.UserId == null || _bannedPlayers.Contains(player.UserId.Value))
 						return;
 					
 					var punishCommand = PunishCommand(player);
@@ -153,7 +224,7 @@ public class CS2_AntiVPN : BasePlugin, IPluginConfig<AntiVpnConfig>
 			{
 				await Server.NextFrameAsync(() =>
 				{
-					if (player == null || !player.IsValid || _bannedPlayers.Contains(player.UserId.Value))
+					if (player == null || !player.IsValid || player.UserId == null || _bannedPlayers.Contains(player.UserId.Value))
 						return;
 
 					var punishCommand = PunishCommand(player);
